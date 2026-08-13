@@ -15,6 +15,7 @@ from aura.brain.base import Brain
 from aura.core.engine import AuraEngine
 
 from conftest import StubBrain
+from aura.core.errors import ProviderError
 
 
 class FailingBrain(Brain):
@@ -22,6 +23,13 @@ class FailingBrain(Brain):
 
     def think(self, messages: list[dict]) -> str:
         raise RuntimeError("boom")
+
+
+class BrokenProviderBrain(Brain):
+    """A brain that simulates a provider failure via AURA's typed error."""
+
+    def think(self, messages: list[dict]) -> str:
+        raise ProviderError("provider internals must stay hidden")
 
 
 def _app_with(brain: Brain) -> FastAPI:
@@ -73,8 +81,12 @@ def test_chat_returns_502_on_brain_failure() -> None:
     app = _app_with(FailingBrain())
     with TestClient(app) as client:
         response = client.post("/api/chat", json={"message": "hi"})
+    # An unexpected brain failure is a server error from the client's view.
     assert response.status_code == 502
-    assert "boom" in response.json()["detail"]
+    # The raw internal exception message must never be exposed to the browser.
+    body = response.json()
+    assert "boom" not in body.get("detail", "")
+    assert "boom" not in response.text
 
 
 def test_chat_returns_503_when_provider_unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,3 +102,40 @@ def test_chat_returns_503_when_provider_unconfigured(monkeypatch: pytest.MonkeyP
         response = client.post("/api/chat", json={"message": "hi"})
     assert response.status_code == 503
     assert "missing" in response.json()["detail"]
+def test_health_returns_ok_with_valid_engine() -> None:
+    app = _app_with(StubBrain())
+    with TestClient(app) as client:
+        response = client.get("/api/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "aura"
+    assert body["configured"] is True
+    assert body["engine_ready"] is True
+
+
+def test_health_reports_unconfigured_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    # create_brain() raises at startup (e.g. missing key): /api/health must
+    # still return 200 "ok" for liveness, but report the engine is not ready.
+    def no_key() -> Brain:
+        raise RuntimeError("AURA_NVIDIA_API_KEY is missing")
+
+    monkeypatch.setattr(web_app, "create_brain", no_key)
+    app = web_app.create_app(engine=None)
+    with TestClient(app) as client:
+        response = client.get("/api/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["configured"] is False
+    assert body["engine_ready"] is False
+
+
+def test_chat_returns_502_without_leaking_provider_internals() -> None:
+    # A typed ProviderError must become a clean 502 that never reveals the
+    # provider's raw message to the browser.
+    app = _app_with(BrokenProviderBrain())
+    with TestClient(app) as client:
+        response = client.post("/api/chat", json={"message": "hi"})
+    assert response.status_code == 502
+    assert "provider internals must stay hidden" not in response.text

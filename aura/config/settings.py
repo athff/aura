@@ -17,6 +17,7 @@ Why pydantic-settings (our chosen tech)?
   * A missing/optional secret does not crash configuration loading.
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +49,24 @@ class Settings(BaseSettings):
 
     # Response "creativity": 0.0 = focused/deterministic, 1.0 = more creative.
     temperature: float = 0.7
+
+    # --- Validation (runs once at import / .env load) ---
+    # These catch misconfiguration EARLY instead of sending a bad request to a
+    # live LLM (which costs time, money, and can bake subtle bugs into history).
+
+    @field_validator("temperature")
+    @classmethod
+    def _check_temperature(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("AURA_TEMPERATURE must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def _check_model(cls, v: str) -> str:
+        if not v or not str(v).strip():
+            raise ValueError("AURA_MODEL must not be empty")
+        return v
 
 
 # One shared instance imported by the rest of AURA.

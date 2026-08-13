@@ -9,8 +9,9 @@ Architecture (the browser NEVER talks to a cloud provider directly):
                                                          -> Nemotron / Anthropic
 
 Routes:
-    GET  /           -> serves the web interface (dark chat UI)
-    POST /api/chat   -> {"message": "Hello AURA"}  ->  {"reply": "..."}
+    GET    /            -> serves the web interface (dark chat UI)
+    GET    /api/health  -> JSON liveness/status probe (no secrets)
+    POST   /api/chat    -> {"message": "Hello AURA"}  ->  {"reply": "..."}
 
 Notes
 -----
@@ -22,6 +23,8 @@ Notes
 * If the selected provider isn't configured yet (e.g. no NVIDIA key in .env),
   the server still starts; /api/chat then returns a friendly 503 so the UI can
   show a clear error instead of crashing.
+* Expected AURA errors (BrainError / ProviderError) are translated to a clean
+  502 that never leaks provider internals to the browser.
 """
 
 from pathlib import Path
@@ -32,10 +35,15 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from aura.brain.factory import create_brain
+from aura.config.settings import settings
 from aura.core.engine import AuraEngine
+from aura.core.errors import AuraError
+from aura.core.logging import get_logger
 
 # This folder holds the web frontend files (index.html, style.css, app.js).
 WEB_DIR = Path(__file__).resolve().parent
+
+logger = get_logger(__name__)
 
 
 def build_engine() -> AuraEngine:
@@ -56,8 +64,11 @@ def create_app(engine: AuraEngine | None = None) -> FastAPI:
     if engine is None:
         try:
             app_state["engine"] = build_engine()
+            logger.info("AURA engine built at startup (provider=%s)", settings.llm_provider)
         except Exception as exc:  # e.g. missing API key for the provider
+            # Keep the server running so the UI still loads and can report it.
             app_state["error"] = str(exc)
+            logger.error("AURA engine could not be built at startup: %s", exc)
 
     app = FastAPI(
         title="AURA",
@@ -78,6 +89,19 @@ def create_app(engine: AuraEngine | None = None) -> FastAPI:
     # Static assets for the page (same origin, no CORS needed).
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
+    @app.get("/api/health")
+    def health() -> dict:
+        """Liveness/status probe. Never exposes API keys or secrets, and never
+        touches the provider -- this works even when the brain is unconfigured.
+        """
+        return {
+            "status": "ok",
+            "service": "aura",
+            "provider": settings.llm_provider,
+            "engine_ready": app_state["engine"] is not None,
+            "configured": app_state["error"] is None,
+        }
+
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(payload: ChatRequest) -> ChatResponse:
         if app_state["error"] is not None:
@@ -93,8 +117,22 @@ def create_app(engine: AuraEngine | None = None) -> FastAPI:
         engine: AuraEngine = app_state["engine"]
         try:
             reply = engine.send(message)
+        except AuraError as exc:
+            # Expected AURA failures: never leak provider internals to the user.
+            logger.warning("Chat failed with an expected AURA error: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="AURA could not produce a reply right now.",
+            )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"AURA hit an error: {exc}")
+            # Unexpected failures must NEVER leak internals to the browser.
+            # Log the FULL exception server-side via AURA's central logger,
+            # then return a clean, generic error to the client.
+            logger.exception("Chat failed with an unexpected error: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="AURA could not produce a reply right now.",
+            )
 
         return ChatResponse(reply=reply)
 

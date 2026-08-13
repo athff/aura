@@ -15,6 +15,8 @@ from openai import OpenAI
 
 from aura.brain.base import Brain
 from aura.config.settings import settings
+from aura.core.errors import ProviderError
+from aura.core.logging import get_logger
 
 # Standing instructions / personality for AURA. We keep a local copy here so
 # this module stays independent of cloud.py (no cross-provider coupling).
@@ -23,6 +25,8 @@ SYSTEM_PROMPT = (
     "concise, and capable personal AI assistant. You are calm, precise, and "
     "friendly, and you explain things clearly."
 )
+
+logger = get_logger(__name__)
 
 
 class NemotronBrain(Brain):
@@ -47,11 +51,29 @@ class NemotronBrain(Brain):
         # "system" message, followed by the conversation turns.
         request_messages = [{"role": "system", "content": SYSTEM_PROMPT}, *messages]
 
-        response = self._client.chat.completions.create(
-            model=settings.model,
-            max_tokens=1024,
-            temperature=settings.temperature,
-            messages=request_messages,
-        )
-        # The reply lives in the first choice's message.content.
-        return response.choices[0].message.content
+        try:
+            response = self._client.chat.completions.create(
+                model=settings.model,
+                max_tokens=1024,
+                temperature=settings.temperature,
+                messages=request_messages,
+            )
+        except Exception as exc:
+            # Transport/API errors should never crash AURA for the user. Log the
+            # details, then raise a typed error that hides provider internals.
+            logger.exception("Nemotron API request failed")
+            raise ProviderError("The Nemotron provider request failed.") from exc
+
+        # Robustness: safely extract the reply. Never assume the payload shape.
+        try:
+            content = response.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as exc:
+            logger.exception("Nemotron returned a malformed response payload")
+            raise ProviderError("The Nemotron provider returned a malformed response.") from exc
+
+        # Reject empty replies the same way we reject transport failures.
+        if content is None or not str(content).strip():
+            logger.warning("Nemotron returned an empty reply")
+            raise ProviderError("The Nemotron provider returned an empty reply.")
+
+        return str(content).strip()

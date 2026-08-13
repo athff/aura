@@ -16,6 +16,9 @@ from aura.brain.base import Brain
 from aura.brain.cloud import CloudBrain
 from aura.brain.nemotron import NemotronBrain
 from aura.config.settings import settings
+from aura.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def create_brain() -> Brain:
@@ -23,8 +26,10 @@ def create_brain() -> Brain:
     provider = settings.llm_provider.strip().lower()
 
     if provider == "nemotron":
+        logger.info("Creating brain for provider 'nemotron'")
         return NemotronBrain()
     if provider == "anthropic":
+        logger.info("Creating brain for provider 'anthropic'")
         return CloudBrain()
 
     raise ValueError(

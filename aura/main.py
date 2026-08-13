@@ -15,6 +15,9 @@ in your .env file, so you don't edit this file to switch providers.
 
 from aura.brain.factory import create_brain
 from aura.core.engine import AuraEngine
+from aura.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def build_engine() -> AuraEngine:
@@ -25,6 +28,7 @@ def build_engine() -> AuraEngine:
 
 def main() -> None:
     print("AURA is online. Type 'exit' or 'quit' to stop.\n")
+    logger.info("AURA terminal session starting")
     engine = build_engine()
 
     while True:

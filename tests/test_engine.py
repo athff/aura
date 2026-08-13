@@ -1,11 +1,41 @@
 """
 Tests for AuraEngine (the orchestrator), using StubBrain so no network or API
-keys are needed. These verify the engine's conversation-history responsibility.
+keys are needed. These verify the engine's conversation-history responsibility
+and its robustness rules (rejecting empty replies as BrainError, normalizing).
 """
 
 from conftest import StubBrain  # tests/ is on sys.path when pytest runs
 
+import pytest
+
 from aura.core.engine import AuraEngine
+from aura.core.errors import BrainError
+
+
+class EmptyBrain(StubBrain):
+    """A brain that returns a blank reply (what a misbehaving provider might)."""
+
+    def think(self, messages: list[dict]) -> str:
+        self.calls.append([dict(m) for m in messages])
+        return "   "
+
+
+class NoneBrain(StubBrain):
+    """A brain that returns None instead of text."""
+
+    def think(self, messages: list[dict]) -> str:
+        self.calls.append([dict(m) for m in messages])
+        return None  # type: ignore[return-value]
+
+
+class WhitespacePadBrain(StubBrain):
+    """A brain that returns padded text; the engine must strip it."""
+
+    REPLY = "  hello world  "
+
+    def think(self, messages: list[dict]) -> str:
+        self.calls.append([dict(m) for m in messages])
+        return self.REPLY
 
 
 def test_send_returns_the_brain_reply(stub_brain: StubBrain) -> None:
@@ -31,3 +61,30 @@ def test_history_accumulates_across_turns(stub_brain: StubBrain) -> None:
     assert messages[0] == {"role": "user", "content": "first"}
     assert messages[1] == {"role": "assistant", "content": StubBrain.REPLY}
     assert messages[2] == {"role": "user", "content": "second"}
+def test_send_strips_and_normalizes_provider_text() -> None:
+    engine = AuraEngine(brain=WhitespacePadBrain())
+    reply = engine.send("hello")
+    assert reply == "hello world"
+    # The assistant turn stored in history is the normalized text.
+    assistant_turn = [m for m in engine._history if m["role"] == "assistant"][-1]
+    assert assistant_turn["content"] == "hello world"
+
+
+def test_engine_rejects_blank_brain_reply_with_brain_error() -> None:
+    engine = AuraEngine(brain=EmptyBrain())
+    with pytest.raises(BrainError):
+        engine.send("hello")
+
+
+def test_engine_rejects_none_brain_reply_with_brain_error() -> None:
+    engine = AuraEngine(brain=NoneBrain())
+    with pytest.raises(BrainError):
+        engine.send("hello")
+
+
+def test_engine_does_not_record_history_for_empty_reply() -> None:
+    engine = AuraEngine(brain=EmptyBrain())
+    with pytest.raises(BrainError):
+        engine.send("hello")
+    # The rejected empty reply must not be appended as an assistant turn.
+    assert len([m for m in engine._history if m["role"] == "assistant"]) == 0
