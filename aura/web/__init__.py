@@ -1,0 +1,1 @@
+"""AURA's local web GUI (FastAPI + HTML/CSS/vanilla JS)."""

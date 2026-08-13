@@ -5,7 +5,11 @@
 #                      provider (e.g. DeepSeek).
 # anthropic         -> the official client for talking to Claude (our cloud brain)
 # pydantic-settings -> loads & validates configuration/secrets from the .env file
+# fastapi           -> the web framework for AURA's local web GUI
+# uvicorn           -> the ASGI server that runs the FastAPI app
 
 openai>=1.40.0
 anthropic>=0.39.0
 pydantic-settings>=2.6.0
+fastapi>=0.115.0
+uvicorn>=0.30.0

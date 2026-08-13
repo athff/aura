@@ -10,6 +10,9 @@ __pycache__/
 venv/
 env/
 
+# pytest cache
+.pytest_cache/
+
 # --- Editors / OS junk ---
 .vscode/
 .idea/

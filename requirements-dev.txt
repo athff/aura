@@ -8,3 +8,6 @@
 
 # pytest -> runs the offline unit-test suite (tests/). Execute with:  pytest
 pytest>=8.0
+
+# httpx -> required by FastAPI's TestClient for testing the web API offline.
+httpx>=0.27.0

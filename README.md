@@ -7,7 +7,7 @@ can be added over time without rewrites.
 ## Current status
 
 **Phase 1 — Conversational Core.** AURA can hold a text conversation in your
-terminal using a cloud LLM.
+terminal using a cloud LLM, and also from a local web chat GUI.
 
 ## Architecture (in one picture)
 
@@ -17,10 +17,21 @@ You (terminal)  ->  AuraEngine (orchestrator)  ->  Brain (the LLM)
                           +----------- reply ----------+
 ```
 
+Web GUI:
+
+```
+Browser  ->  FastAPI  ->  AuraEngine  ->  Brain
+                                        -> Nemotron / Anthropic
+```
+
+The browser only ever talks to FastAPI — it never contacts NVIDIA or Anthropic
+directly, and no API keys reach the browser.
+
 - `aura/config/` — loads settings & secrets from `.env`
-- `aura/brain/`  — the "brain" contract (`base.py`) + a cloud implementation (`cloud.py`)
+- `aura/brain/`  — the "brain" contract (`base.py`) + providers (`cloud.py`, `nemotron.py`) + `factory.py`
 - `aura/core/`   — the orchestrator that manages the conversation
-- `aura/main.py` — the entry point that wires it together and runs the chat loop
+- `aura/main.py` — the terminal entry point (chat loop)
+- `aura/web/`    — the local web GUI (FastAPI + HTML/CSS/vanilla JS)
 
 ## Setup (Windows)
 
@@ -42,3 +53,28 @@ python -m aura.main
 ```
 
 Type `exit` or `quit` to stop.
+
+To run the **local web GUI** instead:
+
+```bat
+:: 1. (setup) activate the venv and install deps as above
+
+:: 2. Run the web server
+python -m aura.web.app
+
+:: 3. Open the chat in your browser
+::    http://127.0.0.1:8000
+```
+
+If the configured provider has no API key yet (no `.env` / no key pasted), the
+server still starts and the page loads; AURA will show you a clear error when
+you send a message.
+
+## Tests
+
+```bat
+pip install -r requirements-dev.txt
+pytest
+```
+
+The suite runs fully offline using stub brains (no API keys, no network).
