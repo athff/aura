@@ -1,0 +1,10 @@
+# Extra dependencies for DEVELOPERS only (tests, etc.).
+# Install with:  pip install -r requirements-dev.txt
+#
+# This keeps runtime dependencies (requirements.txt) lean while giving
+# developers everything needed to run and validate AURA.
+
+-r requirements.txt
+
+# pytest -> runs the offline unit-test suite (tests/). Execute with:  pytest
+pytest>=8.0

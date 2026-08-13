@@ -1,0 +1,11 @@
+# AURA dependencies. Install with:  pip install -r requirements.txt
+#
+# openai            -> the OpenAI-compatible client. Used by the Nemotron brain
+#                      (NVIDIA's endpoint) and any future OpenAI-compatible
+#                      provider (e.g. DeepSeek).
+# anthropic         -> the official client for talking to Claude (our cloud brain)
+# pydantic-settings -> loads & validates configuration/secrets from the .env file
+
+openai>=1.40.0
+anthropic>=0.39.0
+pydantic-settings>=2.6.0
