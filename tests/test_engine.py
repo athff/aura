@@ -66,7 +66,7 @@ def test_send_strips_and_normalizes_provider_text() -> None:
     reply = engine.send("hello")
     assert reply == "hello world"
     # The assistant turn stored in history is the normalized text.
-    assistant_turn = [m for m in engine._history if m["role"] == "assistant"][-1]
+    assistant_turn = [m for m in engine._memory.messages() if m["role"] == "assistant"][-1]
     assert assistant_turn["content"] == "hello world"
 
 
@@ -87,4 +87,4 @@ def test_engine_does_not_record_history_for_empty_reply() -> None:
     with pytest.raises(BrainError):
         engine.send("hello")
     # The rejected empty reply must not be appended as an assistant turn.
-    assert len([m for m in engine._history if m["role"] == "assistant"]) == 0
+    assert len([m for m in engine._memory.messages() if m["role"] == "assistant"]) == 0

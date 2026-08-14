@@ -12,6 +12,8 @@ and routing between different brains.
 from aura.brain.base import Brain
 from aura.core.errors import BrainError
 from aura.core.logging import get_logger
+from aura.memory.base import Memory
+from aura.memory.conversation import ConversationMemory
 
 logger = get_logger(__name__)
 
@@ -19,12 +21,15 @@ logger = get_logger(__name__)
 class AuraEngine:
     """Coordinates a conversation between the user and a Brain."""
 
-    def __init__(self, brain: Brain) -> None:
+    def __init__(self, brain: Brain, memory: Memory | None = None) -> None:
         # We RECEIVE a brain from the outside instead of creating one here.
         # This is "dependency injection": the engine doesn't care which brain
         # it uses, which makes it easy to test and ready for your hybrid plan.
         self._brain = brain
-        self._history: list[dict] = []
+        # Conversation history is stored behind the `Memory` abstraction so the
+        # engine only depends on the contract -- never on a concrete backend.
+        # When omitted, default to the in-memory ConversationMemory.
+        self._memory = memory if memory is not None else ConversationMemory()
         logger.debug("AuraEngine ready with brain %s", type(brain).__name__)
 
     def send(self, user_message: str) -> str:
@@ -39,10 +44,10 @@ class AuraEngine:
             logged here and re-raised unchanged; the web layer is responsible
             for translating them into user-facing HTTP responses.
         """
-        self._history.append({"role": "user", "content": user_message})
+        self._memory.add("user", user_message)
 
         try:
-            reply = self._brain.think(self._history)
+            reply = self._brain.think(self._memory.messages())
         except Exception:
             # Log every brain failure through AURA's central logger, then let
             # the error propagate unchanged so the web layer (which already has
@@ -57,5 +62,5 @@ class AuraEngine:
 
         # Normalize: if a provider hands back non-text, coerce it safely.
         reply = str(reply).strip()
-        self._history.append({"role": "assistant", "content": reply})
+        self._memory.add("assistant", reply)
         return reply
