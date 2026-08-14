@@ -131,3 +131,117 @@ def test_engine_creates_default_conversation_memory_when_omitted() -> None:
         "role": "assistant",
         "content": StubBrain.REPLY,
     }
+
+
+# ---------------------------------------------------------------------------
+# Context-limited memory: max message count, oldest-first eviction, ordering.
+# ---------------------------------------------------------------------------
+
+
+def test_max_messages_caps_history_length() -> None:
+    memory = ConversationMemory(max_messages=3)
+    for content in ["a", "b", "c", "d", "e"]:
+        memory.add("user", content)
+    msgs = memory.messages()
+    assert len(msgs) == 3
+    assert [m["content"] for m in msgs] == ["c", "d", "e"]
+
+
+def test_oldest_messages_evicted_first() -> None:
+    memory = ConversationMemory(max_messages=2)
+    memory.add("user", "first")
+    memory.add("assistant", "second")
+    memory.add("user", "third")
+    assert [m["content"] for m in memory.messages()] == ["second", "third"]
+
+
+def test_eviction_preserves_ordering_and_roles() -> None:
+    memory = ConversationMemory(max_messages=4)
+    roles = ["user", "assistant", "user", "assistant", "user", "assistant", "user", "assistant", "user", "assistant"]
+    for i, role in enumerate(roles):
+        memory.add(role, f"m{i}")
+
+    msgs = memory.messages()
+    assert len(msgs) == 4
+    assert [m["content"] for m in msgs] == ["m6", "m7", "m8", "m9"]
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user", "assistant"]
+
+
+def test_unlimited_when_max_messages_is_none() -> None:
+    memory = ConversationMemory()  # default is unlimited
+    assert memory.max_messages is None
+    for i in range(100):
+        memory.add("user", str(i))
+    assert len(memory.messages()) == 100
+    assert memory.messages()[-1] == {"role": "user", "content": "99"}
+
+
+def test_clear_resets_bounded_memory_and_lifts_eviction() -> None:
+    memory = ConversationMemory(max_messages=2)
+    memory.add("user", "one")
+    memory.add("assistant", "two")
+    memory.add("user", "three")
+    assert len(memory.messages()) == 2
+
+    memory.clear()
+    assert memory.messages() == []
+
+    # Still bounded after a clear, and newly added messages obey the cap.
+    memory.add("user", "fresh")
+    memory.add("assistant", "again")
+    memory.add("user", "third turn")
+    assert [m["content"] for m in memory.messages()] == ["again", "third turn"]
+
+
+def test_evicted_memory_still_returns_defensive_copies() -> None:
+    memory = ConversationMemory(max_messages=2)
+    memory.add("user", "one")
+    memory.add("assistant", "two")
+    memory.add("user", "three")
+
+    returned = memory.messages()
+    returned.append({"role": "assistant", "content": "hacked"})
+    returned[0]["content"] = "tampered"
+
+    assert memory.messages() == [
+        {"role": "assistant", "content": "two"},
+        {"role": "user", "content": "three"},
+    ]
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_max_messages_rejects_non_positive_values(bad: int) -> None:
+    with pytest.raises(ValueError):
+        ConversationMemory(max_messages=bad)
+
+
+@pytest.mark.parametrize("bad", [True, "10", 2.5])
+def test_max_messages_rejects_wrong_types(bad: object) -> None:
+    with pytest.raises(TypeError):
+        ConversationMemory(max_messages=bad)  # type: ignore[arg-type]
+
+
+def test_max_messages_exposed_on_contract() -> None:
+    # Every implementation exposes the configured cap via the Memory contract.
+    assert ConversationMemory(max_messages=5).max_messages == 5
+    assert ConversationMemory().max_messages is None
+
+
+def test_engine_honors_bounded_injected_memory() -> None:
+    brain = StubBrain()
+    memory = ConversationMemory(max_messages=2)
+    engine = AuraEngine(brain=brain, memory=memory)
+
+    engine.send("one")
+    engine.send("two")
+    assert [m["content"] for m in memory.messages()] == ["two", StubBrain.REPLY]
+
+    engine.send("three")
+    # Oldest pair evicted; only the newest two turns survive, in order.
+    msgs = memory.messages()
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert [m["content"] for m in msgs] == ["three", StubBrain.REPLY]
+
+    # The brain no longer receives evicted turns in its last call.
+    seen_contents = [m["content"] for m in brain.calls[-1]]
+    assert "one" not in seen_contents
