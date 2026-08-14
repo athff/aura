@@ -16,6 +16,8 @@ in your .env file, so you don't edit this file to switch providers.
 from aura.brain.factory import create_brain
 from aura.core.engine import AuraEngine
 from aura.core.logging import get_logger
+from aura.interaction.session import Session
+from aura.interaction.text import TextInteraction
 
 logger = get_logger(__name__)
 
@@ -31,22 +33,11 @@ def main() -> None:
     logger.info("AURA terminal session starting")
     engine = build_engine()
 
-    while True:
-        try:
-            user_input = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nAURA: Goodbye.")
-            break
-
-        if user_input.lower() in {"exit", "quit"}:
-            print("AURA: Goodbye.")
-            break
-
-        if not user_input:
-            continue
-
-        reply = engine.send(user_input)
-        print(f"AURA: {reply}\n")
+    # Text interaction over stdin/stdout, driven by the reusable Session. The
+    # Session handles blank lines, exit words, and EOF/Ctrl-C exactly as the
+    # historical CLI loop did, so terminal behavior is unchanged.
+    session = Session(interaction=TextInteraction(), engine=engine)
+    session.run()
 
 
 if __name__ == "__main__":
