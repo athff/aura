@@ -138,6 +138,41 @@ def test_session_exit_words_are_case_insensitive() -> None:
     assert responder.inputs == []
     assert interaction.written == ["AURA: Goodbye."]
 
+def test_session_recognizes_quit_case_insensitively() -> None:
+    responder = RecordingResponder()
+    for word in ("quit", "Quit", "QUIT"):
+        interaction = ScriptedInteraction([word])
+        Session(interaction=interaction, engine=responder).run()
+        assert responder.inputs == []  # never reached the responder
+        assert interaction.written == ["AURA: Goodbye."]
+
+
+def test_session_recognizes_exit_with_surrounding_whitespace() -> None:
+    responder = RecordingResponder()
+    interaction = ScriptedInteraction(["   exit   "])
+    Session(interaction=interaction, engine=responder).run()
+    assert responder.inputs == []
+    assert interaction.written == ["AURA: Goodbye."]
+
+
+def test_session_does_not_terminate_when_exit_appears_inside_a_sentence() -> None:
+    responder = RecordingResponder()
+    question = "Why is the word exit used in programs?"
+    interaction = ScriptedInteraction([question])
+    Session(interaction=interaction, engine=responder).run()
+    # The word "exit" is part of a real question, so it must be answered, not
+    # treated as a termination command.
+    assert responder.inputs == [question]
+    assert interaction.written[0] == f"AURA: reply-to-{question}"
+
+
+def test_session_does_not_terminate_when_quit_appears_inside_a_sentence() -> None:
+    responder = RecordingResponder()
+    question = "Why does quitting a program matter?"
+    Session(interaction=ScriptedInteraction([question]), engine=responder).run()
+    assert responder.inputs == [question]
+
+
 
 def test_session_drives_the_real_engine_via_stub_brain() -> None:
     # Proves the interaction layer plugs into AuraEngine unchanged (DI).
@@ -152,4 +187,4 @@ def test_session_drives_the_real_engine_via_stub_brain() -> None:
         f"AURA: {StubBrain.REPLY}",
         "AURA: Goodbye.",
     ]
-    assert len(brain.calls) == 1
+    assert len(brain.calls) == 1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    

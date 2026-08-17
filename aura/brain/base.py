@@ -11,6 +11,7 @@ changing the engine or the app. This is called "programming to an interface".
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 
 
 class Brain(ABC):
@@ -26,3 +27,16 @@ class Brain(ABC):
              {"role": "assistant", "content": "Hi!"}]
         """
         raise NotImplementedError
+
+    def think_stream(self, messages: list[dict]) -> Iterator[str]:
+        """Yield AURA's reply incrementally, token/fragment by fragment.
+
+        Streaming lets callers begin TTS/playback before the full reply is done.
+        This default implementation is the safe, non-streaming fallback: it yields
+        the whole reply from ``think()`` as a single chunk. Providers whose API
+        supports true token streaming (e.g. Nemotron/OpenAI-compatible) override
+        this to yield tokens as they arrive.
+        """
+        reply = self.think(messages)
+        if reply:
+            yield reply

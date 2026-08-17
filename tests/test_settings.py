@@ -12,7 +12,9 @@ from aura.config.settings import Settings, settings
 
 def test_defaults_are_valid() -> None:
     # The singleton already validated at import; just confirm sane defaults.
-    assert settings.temperature == 0.7
+    # Confirm sane defaults. Temperature is kept low (0.2) so simple factual
+    # questions get direct, consistent answers instead of creative drift.
+    assert settings.temperature == 0.2
     assert settings.model and settings.model.strip()
 
 

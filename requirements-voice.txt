@@ -1,0 +1,16 @@
+# OPTIONAL runtime dependencies for AURA's LOCAL voice providers AND the
+# microphone/speaker hardware adapter (SoundDeviceHardware).
+# Not needed for the CLI, web GUI, or the offline test suite -- install only
+# when you want to actually use the voice providers. Install with:
+#     pip install -r requirements-voice.txt
+#
+# vosk         -> local/offline speech-to-text (backed by VoskSpeechInput)
+# kokoro-onnx  -> local/offline text-to-speech (backed by KokoroSpeechOutput)
+# sounddevice  -> microphone capture + speaker playback (SoundDeviceHardware)
+# numpy        -> needed by sounddevice playback and Kokoro sample conversion
+# Both speech engines also need a model download; see README "Voice".
+
+vosk>=0.3.45
+kokoro-onnx>=0.5.0
+sounddevice>=0.4.6
+numpy>=1.24.0

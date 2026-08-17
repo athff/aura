@@ -1,8 +1,8 @@
-"""
+﻿"""
 interaction/session.py
 ----------------------
 Reusable orchestrator that drives an ``Interaction`` against any AURA
-\"responder\" -- normally ``AuraEngine``.
+"responder" -- normally ``AuraEngine``.
 
 Session is the piece that makes future modalities cheap: it depends ONLY on
 the ``Interaction`` contract and a tiny ``Responder`` protocol (anything with
@@ -17,9 +17,13 @@ All presentation (``You: `` prompt, ``AURA: `` reply prefix) is delegated to
 the interaction's writer so the layer stays provider- and format-agnostic.
 """
 
+from time import perf_counter
 from typing import Protocol
 
+from aura.core.logging import get_logger
 from aura.interaction.base import Interaction, InteractionEnd
+
+logger = get_logger(__name__)
 
 
 class Responder(Protocol):
@@ -69,6 +73,7 @@ class Session:
         """
         while True:
             try:
+                t_read_start = perf_counter()
                 text = self._interaction.read()
             except InteractionEnd:
                 # Input closed (EOF / Ctrl-C): farewell and stop. The leading
@@ -76,12 +81,44 @@ class Session:
                 self._interaction.write(f"\n{self._output_prefix}{self._farewell}")
                 return
 
-            text = text.strip()
-            if text.lower() in self.EXIT_WORDS:
-                self._interaction.write(f"{self._output_prefix}{self._farewell}")
-                return
-            if not text:
-                # Empty utterance: no command to process, just ask again.
-                continue
+            # Wrap per-turn processing so a KeyboardInterrupt anywhere in the
+            # turn yields a clean farewell instead of a traceback.
+            try:
+                t_read_end = perf_counter()
 
-            self._interaction.write(f"{self._output_prefix}{self._engine.send(text)}")
+                text = text.strip()
+                if text.lower() in self.EXIT_WORDS:
+                    self._interaction.write(f"{self._output_prefix}{self._farewell}")
+                    return
+                if not text:
+                    # Empty utterance: no command to process, just ask again.
+                    continue
+
+                # Per-stage latency diagnostics (voice path): capture+STT, think,
+                # TTS+playback, and the full turn.
+                logger.info(
+                    "stage capture+stt=%.0f ms transcript=%r",
+                    (t_read_end - t_read_start) * 1000,
+                    text,
+                )
+
+                t_send_start = perf_counter()
+                reply = self._engine.send(text)
+                t_send_end = perf_counter()
+                logger.info("stage think=%.0f ms", (t_send_end - t_send_start) * 1000)
+
+                t_write_start = perf_counter()
+                self._interaction.write(f"{self._output_prefix}{reply}")
+                t_write_end = perf_counter()
+                logger.info(
+                    "stage tts+playback=%.0f ms turn_total=%.0f ms",
+                    (t_write_end - t_write_start) * 1000,
+                    (t_write_end - t_read_start) * 1000,
+                )
+            except KeyboardInterrupt:
+                # Graceful shutdown on Ctrl-C: farewell and stop.
+                try:
+                    self._interaction.write(f"\n{self._output_prefix}{self._farewell}")
+                except Exception:
+                    pass
+                return

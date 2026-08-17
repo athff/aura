@@ -21,3 +21,10 @@ Thumbs.db
 
 # --- Logs ---
 *.log
+
+# --- Local voice models (downloaded separately) ---
+models/kokoro-v1.0.onnx
+models/voices-v1.0.bin
+
+# Local voice model assets
+models/

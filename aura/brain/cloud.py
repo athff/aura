@@ -8,6 +8,8 @@ ONLY file that knows the details of the Anthropic API; the rest of AURA just
 calls `think()` and gets text back.
 """
 
+from time import perf_counter
+
 from anthropic import Anthropic
 
 from aura.brain.base import Brain
@@ -16,11 +18,31 @@ from aura.core.errors import ProviderError
 from aura.core.logging import get_logger
 
 # The "system prompt" defines AURA's personality and standing instructions.
-# We will grow this as AURA gains capabilities.
+# These rules keep normal responses short and natural because in voice mode the
+# text is read aloud by TTS. The "Conversation-priority rules" make the most
+# recent user message the operative question so old context can never override
+# the current question (this fixes wrong/unrelated answers to factual questions).
 SYSTEM_PROMPT = (
-    "You are AURA (Artificial Universal Reasoning Assistant), a helpful, "
-    "concise, and capable personal AI assistant. You are calm, precise, and "
-    "friendly, and you explain things clearly."
+    "You are AURA (Artificial Universal Reasoning Assistant), a fast, friendly "
+    "personal AI voice assistant. Answer conversationally in plain spoken "
+    "language; never use markdown or bullet lists unless the user asks for it.\n"
+    "Concise-response rules:\n"
+    "1. For normal questions, reply in 1-2 short sentences (about 20-50 words "
+    "maximum).\n"
+    "2. Be direct and natural. Do not repeat the user's question, and do not "
+    "use filler such as 'Sure, I'd be happy to explain...'.\n"
+    "3. If the user explicitly asks for more detail (e.g. 'explain in detail', "
+    "'tell me more', 'give me an example'), you may give a longer, thorough "
+    "answer.\n"
+    "4. Optimize every answer for being spoken aloud by text-to-speech.\n"
+    "Conversation-priority rules:\n"
+    "5. The user's MOST RECENT message is always the current question. Answer "
+    "it FIRST, directly and completely, and always satisfy it on its own."
+    "6. Earlier messages are only background context. Never let an older topic "
+    "or an earlier question override, replace, or drag your reply away from the "
+    "most recent message.\n"
+    "7. For simple factual questions, give the direct, correct factual answer "
+    "immediately. Do not drift into a story, a tangent, or a previous topic."
 )
 
 logger = get_logger(__name__)
@@ -34,10 +56,11 @@ class CloudBrain(Brain):
         self._client = Anthropic(api_key=settings.anthropic_api_key)
 
     def think(self, messages: list[dict]) -> str:
+        started = perf_counter()
         try:
             response = self._client.messages.create(
                 model=settings.model,
-                max_tokens=1024,
+                max_tokens=256,
                 temperature=settings.temperature,
                 system=SYSTEM_PROMPT,
                 messages=messages,
@@ -61,4 +84,11 @@ class CloudBrain(Brain):
             logger.warning("Anthropic returned an empty reply")
             raise ProviderError("The Anthropic provider returned an empty reply.")
 
+        latency_ms = (perf_counter() - started) * 1000
+        logger.info(
+            "Anthropic reply for latest question %r (%d ms): %r",
+            messages[-1],
+            latency_ms,
+            str(text).strip(),
+        )
         return str(text).strip()

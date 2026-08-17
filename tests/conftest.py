@@ -27,3 +27,21 @@ class StubBrain(Brain):
 @pytest.fixture
 def stub_brain() -> StubBrain:
     return StubBrain()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_kokoro_pipeline_cache():
+    """Reset AURA's warm Kokoro pipeline cache before every test.
+
+    The production voice path shares ONE process-wide Kokoro pipeline so the model
+    is never reloaded per response. Tests, however, must stay independent -- e.g.
+    several Kokoro tests intentionally re-use the same model/voices paths while
+    swapping in different fake engines. Clearing the cache first restores the
+    prior "each case loads its own engine" behaviour so no test sees a pipeline
+    left behind by an earlier one.
+    """
+    from aura.interaction.voice import providers as _voice_providers
+
+    _voice_providers._reset_kokoro_pipeline_cache()
+    yield
+    _voice_providers._reset_kokoro_pipeline_cache()

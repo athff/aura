@@ -17,6 +17,8 @@ from aura.core.engine import AuraEngine
 from conftest import StubBrain
 from aura.core.errors import ProviderError
 
+import time
+
 
 class FailingBrain(Brain):
     """A brain that always raises, to exercise the 502 error path."""
@@ -139,3 +141,143 @@ def test_chat_returns_502_without_leaking_provider_internals() -> None:
         response = client.post("/api/chat", json={"message": "hi"})
     assert response.status_code == 502
     assert "provider internals must stay hidden" not in response.text
+
+
+def test_ws_live_text_streaming() -> None:
+    """Connect to /ws/live, send a text message, and receive status + partials + complete.
+
+    Uses StubBrain so no external provider is required.
+    """
+    app = _app_with(StubBrain())
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as ws:
+            # send the expected JSON payload
+            ws.send_json({"type": "text", "text": "hello"})
+
+            # first message must be the 'thinking' status
+            msg = ws.receive_json()
+            assert msg.get("type") == "status"
+            assert msg.get("state") == "thinking"
+
+            # collect partials until the complete message arrives
+            partials: list[str] = []
+            complete_text: str | None = None
+            # loop until we get a complete message or time out via TestClient
+            while True:
+                msg = ws.receive_json()
+                assert isinstance(msg, dict)
+                t = msg.get("type")
+                if t == "partial":
+                    partials.append(msg.get("text", ""))
+                elif t == "complete":
+                    complete_text = msg.get("text")
+                    break
+                elif t == "error":
+                    pytest.fail(f"received error from WS: {msg.get('detail')}")
+
+            # The complete reply must equal the stubbed brain's reply
+            assert complete_text == StubBrain.REPLY
+            # At least one partial should have been sent
+            assert len(partials) >= 1
+            # Each partial should be a substring of the final reply
+            for p in partials:
+                assert p in complete_text
+
+
+def test_ws_live_audio_transcription(monkeypatch) -> None:
+    """Send a small WAV over /ws/live and verify transcript + reply flow.
+
+    We monkeypatch the build_speech_input helper to return a fake STT that
+    deterministically returns a fixed transcript so the test is offline.
+    """
+    class FakeSTT:
+        def transcribe(self, audio):
+            # simple deterministic stub
+            return "hello from audio"
+
+    # patch the builder used by the WS handler
+    import aura.voice.__main__ as voice_main
+
+    monkeypatch.setattr(voice_main, 'build_speech_input', lambda: FakeSTT())
+
+    # Patch TTS to return a tiny WAV without loading Kokoro
+    class FakeTTS:
+        def synthesize(self, text):
+            import io, wave
+            buf = io.BytesIO()
+            with wave.open(buf, 'wb') as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16000)
+                w.writeframes(b'\x00\x00' * 1600)
+            return type('A', (), {'data': buf.getvalue(), 'format': 'wav'})()
+
+    import aura.voice.__main__ as voice_main
+    monkeypatch.setattr(voice_main, 'build_speech_output', lambda: FakeTTS())
+
+    app = _app_with(StubBrain())
+    # Build a tiny 16kHz mono WAV with 0.1s silence (input)
+    import io, wave
+    wav_buf = io.BytesIO()
+    with wave.open(wav_buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        # 0.1s of silence
+        w.writeframes(b'\x00\x00' * 1600)
+    b = wav_buf.getvalue()
+    import base64
+    b64 = base64.b64encode(b).decode('ascii')
+
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws/live') as ws:
+            # send audio payload
+            ws.send_json({'type': 'audio', 'format': 'wav', 'data': b64})
+
+            # Expect transcribing status first
+            msg = ws.receive_json()
+            assert msg.get('type') == 'status' and msg.get('state') == 'transcribing'
+
+            # Then transcript
+            msg = ws.receive_json()
+            assert msg.get('type') == 'transcript'
+            assert 'hello from audio' in msg.get('text')
+
+            # Then thinking status
+            msg = ws.receive_json()
+            assert msg.get('type') == 'status' and msg.get('state') == 'thinking'
+
+            # Then partials/complete/audio; capture final
+            final = None
+            audio_payload = None
+            audio_done = False
+            final = None
+            audio_payload = None
+            while True:
+                msg = ws.receive_json()
+                t = msg.get('type')
+                if t == 'partial':
+                    continue
+                if t == 'complete':
+                    final = msg.get('text')
+                    continue
+                if t == 'audio':
+                    audio_payload = msg
+                    continue
+                if t == 'audio_done':
+                    audio_done = True
+                    # break when we've received both complete and audio_done
+                    if final is not None and audio_payload is not None:
+                        break
+                    continue
+                if t == 'error':
+                    pytest.fail('error from ws: ' + str(msg))
+
+            assert final == StubBrain.REPLY
+            assert audio_payload is not None
+            assert audio_payload.get('format') == 'wav'
+            # verify base64 decodes to a WAV container
+            import base64 as _b64
+            decoded = _b64.b64decode(audio_payload.get('data'))
+            assert decoded[:4] == b'RIFF'
+

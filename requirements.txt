@@ -8,6 +8,10 @@
 # fastapi           -> the web framework for AURA's local web GUI
 # uvicorn           -> the ASGI server that runs the FastAPI app
 
+# Voice providers (local STT / local TTS) are OPTIONAL extras and are NOT
+# listed here, to keep this required set lean and the offline test suite
+# independent of audio engines. See requirements-voice.txt if you want to
+# enable local voice.
 openai>=1.40.0
 anthropic>=0.39.0
 pydantic-settings>=2.6.0

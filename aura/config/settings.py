@@ -48,7 +48,16 @@ class Settings(BaseSettings):
     model: str = "nvidia/nemotron-3-ultra-550b-a55b"
 
     # Response "creativity": 0.0 = focused/deterministic, 1.0 = more creative.
-    temperature: float = 0.7
+    # Kept low (0.2) so simple factual questions get direct, consistent answers
+    # instead of creative drift (a voice-mode correctness bug).
+    temperature: float = 0.2
+
+    # --- Kokoro TTS (used by the local voice runner and /ws/live) ---
+    kokoro_model: str = "models/kokoro-v1.0.onnx"
+    kokoro_voices: str = "models/voices-v1.0.bin"
+    kokoro_voice: str = "af_sarah"
+    kokoro_lang: str = "en-us"
+    kokoro_speed: float = 1.0
 
     # --- Validation (runs once at import / .env load) ---
     # These catch misconfiguration EARLY instead of sending a bad request to a
@@ -66,6 +75,20 @@ class Settings(BaseSettings):
     def _check_model(cls, v: str) -> str:
         if not v or not str(v).strip():
             raise ValueError("AURA_MODEL must not be empty")
+        return v
+
+    @field_validator("kokoro_model", "kokoro_voices", "kokoro_voice", "kokoro_lang")
+    @classmethod
+    def _check_kokoro_text_fields(cls, v: str) -> str:
+        if not v or not str(v).strip():
+            raise ValueError("Kokoro settings must not be empty")
+        return v.strip()
+
+    @field_validator("kokoro_speed")
+    @classmethod
+    def _check_kokoro_speed(cls, v: float) -> float:
+        if v <= 0.0:
+            raise ValueError("AURA_KOKORO_SPEED must be greater than 0")
         return v
 
 
