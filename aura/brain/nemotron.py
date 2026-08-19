@@ -11,10 +11,10 @@ is selected via the factory in brain/factory.py, so this file never has to
 change when we add more providers.
 """
 
-from time import perf_counter
+from time import perf_counter, sleep
 from collections.abc import Iterator
 
-from openai import OpenAI
+from openai import OpenAI, APIError
 
 from aura.brain.base import Brain
 from aura.config.settings import settings
@@ -57,6 +57,32 @@ SYSTEM_PROMPT = (
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Transient retry for NVIDIA's per-worker "ResourceExhausted" quota.
+# ---------------------------------------------------------------------------
+# The NVIDIA free endpoint occasionally rejects a request with a transient
+# "ResourceExhausted: Worker local total request limit reached (16/16)" when a
+# per-worker request quota is momentarily exhausted. It self-resets in seconds.
+# We retry ONLY this exact condition, with a small exponential backoff. All
+# other errors (auth, invalid requests, genuine rate limits, transport) fail
+# fast and are never retried.
+_RESOURCE_EXHAUSTED_RETRIES = 3        # total attempts = retries + 1 (max 4)
+_RESOURCE_EXHAUSTED_BASE_DELAY = 0.5   # seconds; doubles per retry (0.5/1/2)
+
+
+def _is_resource_exhausted(exc: BaseException) -> bool:
+    """True only for the transient 16/16 per-worker ResourceExhausted signal."""
+    if not isinstance(exc, APIError):
+        return False
+    msg = str(exc).lower()
+    return "resourceexhausted" in msg and "limit reached" in msg
+
+
+def _backoff_delay(attempt: int) -> float:
+    """Exponential delay (seconds) before retry number ``attempt`` (0-based)."""
+    return _RESOURCE_EXHAUSTED_BASE_DELAY * (2 ** attempt)
+
+
 
 class NemotronBrain(Brain):
     """Generates replies using NVIDIA's OpenAI-compatible Nemotron endpoint."""
@@ -94,16 +120,27 @@ class NemotronBrain(Brain):
 
         started = perf_counter()
         try:
-            response = self._client.chat.completions.create(
-                model=settings.model,
-                # Cap generation length. Default answers are 20-50 words, but
-                # this still leaves plenty of headroom for explicitly-requested
-                # detailed answers while bounding the worst-case latency (the
-                # bulk of the 2-4s round trip is token generation on the 550B).
-                max_tokens=256,
-                temperature=settings.temperature,
-                messages=request_messages,
-            )
+            for attempt in range(_RESOURCE_EXHAUSTED_RETRIES + 1):
+                try:
+                    response = self._client.chat.completions.create(
+                        model=settings.model,
+                        # Cap generation length. Default answers are 20-50 words, but
+                        # this still leaves plenty of headroom for explicitly-requested
+                        # detailed answers while bounding the worst-case latency (the
+                        # bulk of the 2-4s round trip is token generation on the 550B).
+                        max_tokens=256,
+                        temperature=settings.temperature,
+                        messages=request_messages,
+                    )
+                    break
+                except Exception as exc:
+                    # Retry ONLY the transient 16/16 ResourceExhausted condition.
+                    if not _is_resource_exhausted(exc) or attempt == _RESOURCE_EXHAUSTED_RETRIES:
+                        raise
+                    logger.warning(
+                        "Nemotron resource-exhausted (16/16); retry %d/%d in %.1fs",
+                        attempt + 1, _RESOURCE_EXHAUSTED_RETRIES, _backoff_delay(attempt))
+                    sleep(_backoff_delay(attempt))
         except Exception as exc:
             # Transport/API errors should never crash AURA for the user. Log the
             # details, then raise a typed error that hides provider internals.
@@ -146,22 +183,34 @@ class NemotronBrain(Brain):
         started = perf_counter()
         produced_any = False
         try:
-            stream = self._client.chat.completions.create(
-                model=settings.model,
-                max_tokens=256,
-                temperature=settings.temperature,
-                messages=request_messages,
-                stream=True,
-            )
-            for chunk in stream:
-                choices = chunk.choices
-                delta = None
-                if choices and choices[0].delta is not None:
-                    delta = choices[0].delta.content
-                if not delta:
-                    continue
-                produced_any = True
-                yield str(delta)
+            for attempt in range(_RESOURCE_EXHAUSTED_RETRIES + 1):
+                try:
+                    stream = self._client.chat.completions.create(
+                        model=settings.model,
+                        max_tokens=256,
+                        temperature=settings.temperature,
+                        messages=request_messages,
+                        stream=True,
+                    )
+                    for chunk in stream:
+                        choices = chunk.choices
+                        delta = None
+                        if choices and choices[0].delta is not None:
+                            delta = choices[0].delta.content
+                        if not delta:
+                            continue
+                        produced_any = True
+                        yield str(delta)
+                    break  # stream finished cleanly; exit the retry loop
+                except Exception as exc:
+                    # Retry ONLY the transient 16/16 ResourceExhausted, and only
+                    # if no token has been produced yet (never retry mid-stream).
+                    if produced_any or not _is_resource_exhausted(exc) or attempt == _RESOURCE_EXHAUSTED_RETRIES:
+                        raise
+                    logger.warning(
+                        "Nemotron streaming resource-exhausted (16/16); retry %d/%d in %.1fs",
+                        attempt + 1, _RESOURCE_EXHAUSTED_RETRIES, _backoff_delay(attempt))
+                    sleep(_backoff_delay(attempt))
         except Exception as exc:
             logger.exception("Nemotron streaming request failed")
             raise ProviderError("The Nemotron provider request failed.") from exc
