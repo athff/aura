@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     )
 
     # Which brain provider to use. Supported: "nemotron", "anthropic".
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "aura_memory"
+
     llm_provider: str = "nemotron"
 
     # --- Anthropic / Claude (used when llm_provider == "anthropic") ---
