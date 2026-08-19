@@ -12,31 +12,54 @@ It performs "composition" -- creating the parts and wiring them together:
 Which provider AURA uses (Nemotron, Claude, ...) comes from AURA_LLM_PROVIDER
 in your .env file, so you don't edit this file to switch providers.
 """
+from qdrant_client import QdrantClient
 
 from aura.brain.factory import create_brain
+from aura.config.settings import settings
 from aura.core.engine import AuraEngine
 from aura.core.logging import get_logger
 from aura.interaction.session import Session
 from aura.interaction.text import TextInteraction
+from aura.memory.embeddings import LocalEmbeddingProvider
+from aura.memory.qdrant import QdrantLongTermMemory
 
 logger = get_logger(__name__)
 
 
 def build_engine() -> AuraEngine:
-    """Create AURA's parts and connect them."""
-    brain = create_brain()  # picks the brain based on settings.llm_provider
-    return AuraEngine(brain=brain)
+    """Create AURA's brain and persistent long-term memory."""
+    brain = create_brain()
+
+    qdrant = QdrantClient(url=settings.qdrant_url)
+    embeddings = LocalEmbeddingProvider()
+
+    long_term_memory = QdrantLongTermMemory(
+        client=qdrant,
+        embeddings=embeddings,
+        collection_name=settings.qdrant_collection,
+    )
+
+    logger.info(
+        "Long-term memory enabled: Qdrant collection=%s",
+        settings.qdrant_collection,
+    )
+
+    return AuraEngine(
+        brain=brain,
+        long_term_memory=long_term_memory,
+    )
 
 
 def main() -> None:
     print("AURA is online. Type 'exit' or 'quit' to stop.\n")
     logger.info("AURA terminal session starting")
+
     engine = build_engine()
 
-    # Text interaction over stdin/stdout, driven by the reusable Session. The
-    # Session handles blank lines, exit words, and EOF/Ctrl-C exactly as the
-    # historical CLI loop did, so terminal behavior is unchanged.
-    session = Session(interaction=TextInteraction(), engine=engine)
+    session = Session(
+        interaction=TextInteraction(),
+        engine=engine,
+    )
     session.run()
 
 

@@ -17,6 +17,7 @@ from aura.core.errors import BrainError
 from aura.core.logging import get_logger
 from aura.memory.base import Memory
 from aura.memory.conversation import ConversationMemory
+from aura.memory.long_term import LongTermMemory
 
 logger = get_logger(__name__)
 
@@ -31,11 +32,17 @@ DEFAULT_CONTEXT_MESSAGES = 8
 class AuraEngine:
     """Coordinates a conversation between the user and a Brain."""
 
-    def __init__(self, brain: Brain, memory: Memory | None = None) -> None:
+    def __init__(
+        self,
+        brain: Brain,
+        memory: Memory | None = None,
+        long_term_memory: LongTermMemory | None = None,
+    ) -> None:
         # We RECEIVE a brain from the outside instead of creating one here.
         # This is "dependency injection": the engine doesn't care which brain
         # it uses, which makes it easy to test and ready for your hybrid plan.
         self._brain = brain
+        self._long_term_memory = long_term_memory
         # Conversation history is stored behind the `Memory` abstraction so the
         # engine only depends on the contract -- never on a concrete backend.
         # When omitted, default to a bounded ConversationMemory so stale context
@@ -65,10 +72,25 @@ class AuraEngine:
         self._memory.add("user", user_message)
 
         history = self._memory.messages()
-        # Diagnostic: the conversation window handed to the brain (the last item
-        # is always the current question). Only the message COUNT is logged on the
-        # hot path; the full transcript is DEBUG-level so we never re-serialize
-        # the whole history to a string on every request right before the API call.
+
+        # Long-term memory supplements recent conversation without modifying
+        # the short-term Memory backend.
+        if self._long_term_memory is not None:
+            memories = self._long_term_memory.search(user_message, limit=5)
+            if memories:
+                long_term_context = {
+                    "role": "system",
+                    "content": (
+                        "Relevant long-term memory:\n"
+                        + "\n".join(
+                            f"- {item['text']}"
+                            for item in memories
+                            if item.get("text")
+                        )
+                    ),
+                }
+                history = [long_term_context] + history
+
         logger.info("Conversation history sent to brain (%d messages)", len(history))
         logger.debug("Conversation history detail sent to brain: %r", history)
 
@@ -96,6 +118,17 @@ class AuraEngine:
         # Normalize: if a provider hands back non-text, coerce it safely.
         reply = str(reply).strip()
         self._memory.add("assistant", reply)
+
+        if self._long_term_memory is not None:
+            self._long_term_memory.remember(
+                user_message,
+                metadata={"role": "user"},
+            )
+            self._long_term_memory.remember(
+                reply,
+                metadata={"role": "assistant"},
+            )
+
         return reply
 
     def send_stream(self, user_message: str) -> Iterator[str]:
