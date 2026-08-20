@@ -3,43 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA</title>
+  <title>AURA — Artificial Universal Reasoning Assistant</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="app" data-livestate="ready">
+
+    <!-- Layer 1: Header -->
     <header class="header">
       <div class="header-inner">
-        <div class="brand">
-          <div class="logo" aria-hidden="true">A</div>
-          <div class="titles">
-            <h1 class="name">AURA</h1>
-            <p class="tagline">Artificial Universal Reasoning Assistant</p>
-          </div>
-        </div>
+        <!-- Top-left: Hamburger Menu -->
+        <button id="menu-btn" class="menu-btn" aria-label="Menu" type="button">
+          <span></span><span></span><span></span>
+        </button>
 
-        <div class="hero-orb" aria-hidden="true">
-          <div id="aura-orb" class="orb"></div>
-          <div class="orb-ring ring-1"></div>
-          <div class="orb-ring ring-2"></div>
-        </div>
-
-        <div class="live-controls">
-          <span class="status-dot" title="Connection status" aria-hidden="true"></span>
-          <button id="live-btn" class="live-btn" type="button" aria-label="Start Live mode">Live</button>
-          <button id="stop-live-btn" class="stop-live-btn" type="button" hidden aria-label="Stop Live mode">Stop</button>
-          <div id="live-status" class="live-status" role="status" aria-live="polite">Ready</div>
+        <!-- Top-right: Compact AURA Icon -->
+        <div class="logo-small" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="12" r="6"/>
+          </svg>
         </div>
       </div>
     </header>
 
-    <main id="messages" class="messages" aria-live="polite" aria-label="Chat messages"></main>
+    <!-- Layer 2: Main Conversation Area -->
+    <div class="central-area">
+      <!-- Centered Identity Block -->
+      <div class="identity-block" aria-hidden="true">
+        <div class="orb-container">
+          <!-- Aura Orb (preserved for app.js hooks) -->
+          <div id="aura-orb" class="orb"></div>
+          <div class="orb-ring ring-1"></div>
+          <div class="orb-ring ring-2"></div>
+        </div>
+        <div class="titles">
+          <h1 class="name">AURA</h1>
+          <p class="tagline">Artificial Universal Reasoning Assistant</p>
+        </div>
+      </div>
 
-    <form id="chat-form" class="composer" autocomplete="off">
-      <button id="rec-btn" class="rec-btn" type="button" hidden aria-label="Record microphone input">
-        <span class="btn-icon" aria-hidden="true">●</span>
-        <span class="btn-label">Record</span>
-      </button>
+      <!-- Message container -->
+      <main id="messages" class="messages" aria-live="polite" aria-label="Chat messages"></main>
+    </div>
+
+    <!-- Layer 3: Bottom Composer Row -->
+    <form id="chat-form" class="composer-row" autocomplete="off">
       <textarea
         id="chat-input"
         class="input"
@@ -54,9 +62,30 @@
           <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
         </svg>
       </button>
+      <!-- Live Button (right-aligned on same row) -->
+      <button id="live-btn" class="live-btn" type="button" aria-label="Start Live mode">Live</button>
+      <button id="stop-live-btn" class="stop-live-btn" type="button" hidden aria-label="Stop Live mode">Stop</button>
     </form>
-  </div>
 
+    <!-- Live Mode Modal (Portrait Overlay) -->
+    <div id="live-modal" class="live-modal-overlay" hidden aria-hidden="true">
+      <div class="live-dialog" role="dialog" aria-label="Live Mode">
+        <div class="live-modal-header">
+          <span class="live-modal-title">AURA</span>
+          <button id="close-live" class="close-live-btn" type="button" aria-label="Close Live Mode">×</button>
+        </div>
+        <div id="live-status" class="live-modal-status" role="status" aria-live="polite">LISTENING</div>
+        <div class="live-visualization">
+          <div id="listening-wave" class="waveform listening-wave"></div>
+          <div id="speaking-wave" class="waveform speaking-wave hidden"></div>
+          <div id="thinking-process" class="processing thinking hidden"></div>
+          <div id="transcribing-process" class="processing transcribing hidden"></div>
+        </div>
+        <p class="live-hint">Speaking…</p>
+      </div>
+    </div>
+
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>

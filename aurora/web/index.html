@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AURA — Artificial Universal Reasoning Assistant</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app" data-livestate="ready">
+    <!-- Layer 1: Header -->
+    <header class="header">
+      <div class="header-inner">
+        <button id="menu-btn" class="menu-btn" type="button" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="logo-small" aria-hidden="true">
+          <div class="mini-orb"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Layer 2: Conversation Area -->
+    <main id="messages" class="messages" aria-live="polite" aria-label="Chat messages"></main>
+
+    <!-- Centered Identity Block -->
+    <div class="identity-block" aria-hidden="true">
+      <div class="orb-container">
+        <div id="aura-orb" class="orb"></div>
+        <div class="orb-ring ring-1"></div>
+        <div class="orb-ring ring-2"></div>
+      </div>
+      <div class="titles">
+        <h1 class="name">AURA</h1>
+        <p class="tagline">Artificial Universal Reasoning Assistant</p>
+      </div>
+    </div>
+
+    <!-- Layer 3: Bottom Controls -->
+    <form id="chat-form" class="composer" autocomplete="off">
+      <button id="rec-btn" class="rec-btn" type="button" hidden aria-label="Record microphone input">
+        <span class="btn-icon" aria-hidden="true">●</span>
+        <span class="btn-label">Record</span>
+      </button>
+      <textarea
+        id="chat-input"
+        class="input"
+        rows="1"
+        placeholder="Message AURA…"
+        aria-label="Message AURA"
+      ></textarea>
+      <button id="send-btn" class="send-btn" type="submit" aria-label="Send message">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+      <button id="live-btn" class="live-btn" type="button" aria-label="Start Live mode">Live</button>
+    </form>
+
+    <!-- Live Mode Overlay -->
+    <div id="live-overlay" class="live-overlay" hidden aria-hidden="true">
+      <div class="live-modal">
+        <div class="live-header">
+          <div class="live-title">AURA</div>
+          <button id="close-live" class="close-live" type="button" aria-label="Close Live Mode">✕</button>
+        </div>
+        <div class="live-content">
+          <div id="live-status" class="live-status-modal" role="status" aria-live="polite">LISTENING</div>
+          <div class="visualization">
+            <div id="listening-wave" class="waveform listening-wave hidden">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div id="speaking-wave" class="waveform speaking-wave hidden">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <div id="thinking-processing" class="processing thinking-proc hidden"></div>
+            <div id="transcribing-processing" class="processing transcribing-proc hidden"></div>
+          </div>
+          <button id="stop-live-btn" class="stop-live-btn-modal" type="button">End</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
