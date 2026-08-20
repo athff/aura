@@ -487,6 +487,7 @@
       stopLiveBtn.hidden = false;
 
       setLiveStatus("Listening");
+document.body.classList.add("live-open");
       maybeResumeListening(60);
     });
 
@@ -559,6 +560,7 @@
       stopLiveBtn.hidden = true;
       setLiveStatus("Disconnected");
       ws = null;
+document.body.classList.remove("live-open");
     });
 
     ws.addEventListener("error", () => {
