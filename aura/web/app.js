@@ -1,17 +1,18 @@
-// AURA chat frontend (vanilla JS, no framework).
+﻿// AURA chat frontend (vanilla JS, no framework).
 // Talks ONLY to this app's /api/chat endpoint.
 
 (function () {
   "use strict";
 
-  const form = document.getElementById("chat-form");
+    const form = document.getElementById("chat-form");
   const input = document.getElementById("chat-input");
   const sendBtn = document.getElementById("send-btn");
-  const recBtn = document.getElementById("rec-btn");
   const messagesEl = document.getElementById("messages");
   const liveBtn = document.getElementById("live-btn");
   const stopLiveBtn = document.getElementById("stop-live-btn");
   const liveStatusEl = document.getElementById("live-status");
+  const stateLabelEl = document.getElementById("stateLabel");
+  const body = document.body;
 
   let busy = false;
   let ws = null;
@@ -47,41 +48,39 @@
   }
 
   function createBubble(role, text) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "message " + role;
+    const article = document.createElement("article");
+    article.className = "msg msg--" + role;
 
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
+    if (role === "assistant") {
+      const orbSpan = document.createElement("span");
+      orbSpan.className = "orb orb--msg";
+      orbSpan.setAttribute("aria-hidden", "true");
+      orbSpan.innerHTML = '<svg class="aura-logo" aria-hidden="true"><use href="#auraOrb"/></svg>';
+      article.appendChild(orbSpan);
+    }
+
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "msg__body";
+
+    const meta = document.createElement("span");
+    meta.className = "msg__meta";
     if (role === "user") {
-      avatar.classList.add("avatar-user");
-      avatar.textContent = "U";
-    } else if (role === "assistant") {
-      avatar.classList.add("avatar-assistant");
-      avatar.textContent = "A";
+      meta.textContent = "You Â· now";
     } else {
-      avatar.classList.add("avatar-error");
-      avatar.textContent = "!";
+      meta.textContent = "AURA Â· now";
     }
+    bodyEl.appendChild(meta);
 
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-
-    if (role === "assistant" && text === null) {
-      const dots = document.createElement("div");
-      dots.className = "dots";
-      dots.innerHTML = "<span></span><span></span><span></span>";
-      bubble.appendChild(dots);
-    } else {
-      const content = document.createElement("div");
-      content.textContent = text;
-      bubble.appendChild(content);
+    const p = document.createElement("p");
+    if (text !== null && text !== undefined) {
+      p.textContent = text;
     }
+    bodyEl.appendChild(p);
 
-    wrapper.appendChild(avatar);
-    wrapper.appendChild(bubble);
-    messagesEl.appendChild(wrapper);
+    article.appendChild(bodyEl);
+    messagesEl.appendChild(article);
     scrollToBottom();
-    return wrapper;
+    return article;
   }
 
   function setBusy(value) {
@@ -95,37 +94,48 @@
     input.style.height = Math.min(input.scrollHeight, 180) + "px";
   }
 
+    // ----- Visual state registry (mirrors prototype state toolbar) -----
+  const STATES = [
+    { id: "ready",        label: "READY",          liveStatus: "Ready when you are." },
+    { id: "listening",    label: "LISTENING",      liveStatus: "I'm listeningâ€¦" },
+    { id: "transcribing", label: "TRANSCRIBING",   liveStatus: "Hearing youâ€¦" },
+    { id: "thinking",     label: "THINKING",       liveStatus: "Thinkingâ€¦" },
+    { id: "speaking",     label: "SPEAKING",       liveStatus: "Speakingâ€¦" },
+    { id: "error",        label: "ERROR",          liveStatus: "Something went wrong." },
+    { id: "disconnected", label: "DISCONNECTED",   liveStatus: "Reconnectingâ€¦" }
+  ];
+
+  function byStateId(id) {
+    for (let i = 0; i < STATES.length; i++) {
+      if (STATES[i].id === id) return STATES[i];
+    }
+    return STATES[0];
+  }
+
+  function syncLive() {
+    const meta = byStateId(body.getAttribute("data-state"));
+    if (stateLabelEl) stateLabelEl.textContent = meta.label;
+    if (liveStatusEl) liveStatusEl.textContent = meta.liveStatus;
+  }
+
+  // Canonical visual state setter â€” called by WebSocket status messages
+  // and by the dev toolbar visual-only buttons. Real WebSocket state always
+  // overrides any visual/dev state.
   function setLiveStatus(state) {
-    if (!liveStatusEl) return;
     const normalized = state ? String(state).toLowerCase() : "ready";
-    liveStatusEl.textContent = state || "Ready";
-    liveStatusEl.dataset.state = normalized;
-    const appEl = document.querySelector(".app");
-    if (appEl) {
-      appEl.dataset.livestate = normalized;
+    body.setAttribute("data-state", normalized);
+    syncLive();
+    // brief cross-fade when the voice state changes (180â€“250ms)
+    const stage = document.querySelector(".live__stage");
+    if (stage) {
+      stage.classList.remove("fx-faded");
+      void stage.offsetWidth; /* reflow to restart the animation */
+      stage.classList.add("fx-faded");
+      setTimeout(function () { stage.classList.remove("fx-faded"); }, 260);
     }
   }
 
-  function updateRecordButton(isRecording) {
-    if (!recBtn) return;
-    if (isRecording) {
-      recBtn.dataset.state = "recording";
-      recBtn.title = "Stop recording";
-      recBtn.setAttribute("aria-label", "Stop recording");
-      const icon = recBtn.querySelector(".btn-icon");
-      const label = recBtn.querySelector(".btn-label");
-      if (icon) icon.textContent = "■";
-      if (label) label.textContent = "Stop";
-    } else {
-      recBtn.dataset.state = "";
-      recBtn.title = "Start recording";
-      recBtn.setAttribute("aria-label", "Start recording");
-      const icon = recBtn.querySelector(".btn-icon");
-      const label = recBtn.querySelector(".btn-label");
-      if (icon) icon.textContent = "●";
-      if (label) label.textContent = "Record";
-    }
-  }
+
 
   async function sendMessage() {
     const text = input.value.trim();
@@ -219,7 +229,7 @@
         // ignore
       }
     }
-    updateRecordButton(false);
+
   }
 
   function maybeResumeListening(delayMs) {
@@ -386,7 +396,6 @@
 
     recordedChunks = [];
     shouldProcessRecording = true;
-    updateRecordButton(true);
     setLiveStatus("Listening");
 
     navigator.mediaDevices
@@ -399,7 +408,7 @@
         } catch (err) {
           createBubble("error", "Cannot create MediaRecorder: " + err);
           setLiveStatus("Error");
-          updateRecordButton(false);
+
           return;
         }
 
@@ -413,7 +422,7 @@
         recorder.onstop = async () => {
           cleanupVAD();
           const processThisRecording = shouldProcessRecording;
-          updateRecordButton(false);
+
 
           if (!processThisRecording || !recordedChunks.length) {
             mediaRecorder = null;
@@ -457,7 +466,7 @@
       })
       .catch(() => {
         micPermissionDenied = true;
-        updateRecordButton(false);
+
         createBubble("error", "Microphone permission denied or unavailable");
         setLiveStatus("Error");
       });
@@ -476,7 +485,7 @@
       micAutoResumeEnabled = true;
       liveBtn.hidden = true;
       stopLiveBtn.hidden = false;
-      recBtn.hidden = false;
+
       setLiveStatus("Listening");
       maybeResumeListening(60);
     });
@@ -548,7 +557,6 @@
       stopCurrentAudio();
       liveBtn.hidden = false;
       stopLiveBtn.hidden = true;
-      recBtn.hidden = true;
       setLiveStatus("Disconnected");
       ws = null;
     });
@@ -574,7 +582,6 @@
     currentPartialEl = null;
     liveBtn.hidden = false;
     stopLiveBtn.hidden = true;
-    recBtn.hidden = true;
     setLiveStatus("Ready");
   }
 
@@ -602,21 +609,9 @@
     disconnectLive();
   });
 
-  recBtn.addEventListener("click", (event) => {
-    event.preventDefault();
-    if (!liveMode || !isWsOpen()) {
-      createBubble("error", "Connect Live mode before recording");
-      return;
-    }
-    if (isRecordingActive()) {
-      stopRecording(true);
-      setLiveStatus("Transcribing");
-    } else {
-      startRecording();
-    }
-  });
 
-  updateRecordButton(false);
+
+
   setLiveStatus("Ready");
   input.focus();
 })();

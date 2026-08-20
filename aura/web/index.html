@@ -1,91 +1,162 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AURA — Artificial Universal Reasoning Assistant</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-  <div class="app" data-livestate="ready">
+<body data-state="ready">
 
-    <!-- Layer 1: Header -->
-    <header class="header">
-      <div class="header-inner">
-        <!-- Top-left: Hamburger Menu -->
-        <button id="menu-btn" class="menu-btn" aria-label="Menu" type="button">
-          <span></span><span></span><span></span>
-        </button>
+<div class="scene">
 
-        <!-- Top-right: Compact AURA Icon -->
-        <div class="logo-small" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-            <circle cx="12" cy="12" r="6"/>
-          </svg>
-        </div>
+  <svg class="logo-defs" xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="auraShade" gradientUnits="objectBoundingBox" cx="0.66" cy="0.30" r="0.72">
+        <stop offset="0"   stop-color="#eefdff"/>
+        <stop offset="0.12" stop-color="#9df2ff"/>
+        <stop offset="0.34" stop-color="#43e8ff"/>
+        <stop offset="0.52" stop-color="#19bdeb"/>
+        <stop offset="0.72" stop-color="#1764e8"/>
+        <stop offset="0.86" stop-color="#123b9e"/>
+        <stop offset="1"   stop-color="#0b2258"/>
+      </radialGradient>
+      <symbol id="auraOrb" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="29" fill="none" stroke="#19bdeb" stroke-width="13" opacity="0.14"/>
+        <circle cx="32" cy="32" r="22" fill="#0a1c3e"/>
+        <circle cx="32" cy="32" r="22" fill="none" stroke="url(#auraShade)" stroke-width="8"/>
+        <circle cx="32" cy="32" r="14" fill="none" stroke="#baf2ff" stroke-width="1.2" opacity="0.85"/>
+        <circle cx="32" cy="32" r="14" fill="#050b1f"/>
+        <ellipse cx="41" cy="18" rx="5" ry="3.2" fill="#ffffff" opacity="0.5" transform="rotate(-24 41 18)"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <section class="chat" id="chat">
+
+    <header class="chat__header">
+      <button class="hamburger" id="menu-btn" type="button" aria-label="Menu">☰</button>
+
+      <div class="identity">
+        <span class="orb orb--chip" aria-hidden="true"><svg class="aura-logo" aria-hidden="true"><use href="#auraOrb"/></svg></span>
+        <span class="brand">AURA<svg class="brand-spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e8fdff" d="M12 2 L12.8 12 L12 22 L11.2 12 Z M2 12 L12 11.2 L22 12 L12 12.8 Z"/></svg></span>
+        <span class="brand-sub">Voice Assistant</span>
+      </div>
+
+      <div class="header-right">
+        <span class="header-dot" aria-hidden="true"></span>
       </div>
     </header>
 
-    <!-- Layer 2: Main Conversation Area -->
-    <div class="central-area">
-      <!-- Centered Identity Block -->
-      <div class="identity-block" aria-hidden="true">
-        <div class="orb-container">
-          <!-- Aura Orb (preserved for app.js hooks) -->
-          <div id="aura-orb" class="orb"></div>
-          <div class="orb-ring ring-1"></div>
-          <div class="orb-ring ring-2"></div>
-        </div>
-        <div class="titles">
-          <h1 class="name">AURA</h1>
-          <p class="tagline">Artificial Universal Reasoning Assistant</p>
-        </div>
-      </div>
-
-      <!-- Message container -->
-      <main id="messages" class="messages" aria-live="polite" aria-label="Chat messages"></main>
+    <div class="conversation" id="messages" aria-live="polite" aria-label="Chat messages">
+      <div class="conversation__eyebrow">Conversation</div>
     </div>
 
-    <!-- Layer 3: Bottom Composer Row -->
     <form id="chat-form" class="composer-row" autocomplete="off">
-      <textarea
-        id="chat-input"
-        class="input"
-        rows="1"
-        placeholder="Message AURA…"
-        aria-label="Message AURA"
-      ></textarea>
-      <button id="send-btn" class="send-btn" type="submit" aria-label="Send message">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
+      <div class="composer">
+        <textarea id="chat-input" class="composer__input" rows="1" style="resize: none" placeholder="Message AURA…" aria-label="Message AURA"></textarea>
+        <button id="send-btn" class="composer__send" type="submit" aria-label="Send">↑</button>
+      </div>
+
+      <button id="live-btn" class="live-btn" type="button">
+        <span class="live-btn__orb" aria-hidden="true"></span>
+        <span>LIVE</span>
       </button>
-      <!-- Live Button (right-aligned on same row) -->
-      <button id="live-btn" class="live-btn" type="button" aria-label="Start Live mode">Live</button>
-      <button id="stop-live-btn" class="stop-live-btn" type="button" hidden aria-label="Stop Live mode">Stop</button>
     </form>
 
-    <!-- Live Mode Modal (Portrait Overlay) -->
-    <div id="live-modal" class="live-modal-overlay" hidden aria-hidden="true">
-      <div class="live-dialog" role="dialog" aria-label="Live Mode">
-        <div class="live-modal-header">
-          <span class="live-modal-title">AURA</span>
-          <button id="close-live" class="close-live-btn" type="button" aria-label="Close Live Mode">×</button>
+  </section>
+
+  <aside class="live" id="live" aria-label="Live voice panel">
+    <div class="live__panel">
+      <header class="live__header">
+        <div class="live__brand">
+          <span class="orb orb--orb" aria-hidden="true"><svg class="aura-logo" aria-hidden="true"><use href="#auraOrb"/></svg></span>
+          <span class="brand brand--live">AURA<svg class="brand-spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#e8fdff" d="M12 2 L12.8 12 L12 22 L11.2 12 Z M2 12 L12 11.2 L22 12 L12 12.8 Z"/></svg></span>
         </div>
-        <div id="live-status" class="live-modal-status" role="status" aria-live="polite">LISTENING</div>
-        <div class="live-visualization">
-          <div id="listening-wave" class="waveform listening-wave"></div>
-          <div id="speaking-wave" class="waveform speaking-wave hidden"></div>
-          <div id="thinking-process" class="processing thinking hidden"></div>
-          <div id="transcribing-process" class="processing transcribing hidden"></div>
+      </header>
+
+      <div class="live__state">
+        <span class="state-pulse" aria-hidden="true"></span>
+        <span class="state-label" id="stateLabel">READY</span>
+      </div>
+
+      <div class="live__stage">
+        <div class="fx fx--listen" id="listening-wave" aria-hidden="true">
+          <div class="wave wave--listen">
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+            <span class="bar"></span><span class="bar"></span>
+          </div>
         </div>
-        <p class="live-hint">Speaking…</p>
+
+        <div class="fx fx--transcribe" id="transcribing-process" aria-hidden="true">
+          <div class="tscribe">
+            <span class="tscribe__rule"></span>
+            <span class="tscribe__row">
+              <span class="tb"></span><span class="tb"></span><span class="tb"></span>
+              <span class="tb"></span><span class="tb"></span><span class="tb"></span>
+              <span class="tb"></span>
+            </span>
+            <span class="tscribe__row tscribe__row--pad">
+              <span class="tb"></span><span class="tb"></span><span class="tb"></span>
+              <span class="tb"></span><span class="tb"></span><span class="tb"></span>
+            </span>
+            <span class="tscribe__rule"></span>
+            <span class="tscribe__scan" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div class="fx fx--speak" id="speaking-wave" aria-hidden="true">
+          <svg class="wave wave--speak" viewBox="0 0 240 56" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="waveStroke" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%"   stop-color="#5b8cff"/>
+                <stop offset="50%"  stop-color="#7c5cff"/>
+                <stop offset="100%" stop-color="#2fd4ed"/>
+              </linearGradient>
+            </defs>
+            <path class="wave__line" fill="none" stroke="url(#waveStroke)" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <div class="orb orb--large" id="thinking-process">
+          <span class="orb__glow" aria-hidden="true"></span>
+          <svg class="aura-logo" aria-hidden="true"><use href="#auraOrb"/></svg>
+          <span class="orb__core" aria-hidden="true"></span>
+          <span class="orb__spinner orb__spinner--a" aria-hidden="true"><span class="orb__accent"></span></span>
+          <span class="orb__spinner orb__spinner--b" aria-hidden="true"><span class="orb__accent"></span></span>
+        </div>
+      </div>
+
+      <div class="live__status" id="live-status">Real when you are.</div>
+
+      <div class="live__footer">
+        <button class="stop-live" id="stop-live-btn" type="button">
+          <span class="stop-live__icon" aria-hidden="true"></span>
+          <span>STOP LIVE</span>
+        </button>
       </div>
     </div>
+  </aside>
 
-  </div>
-  <script src="/static/app.js"></script>
+  <footer class="dev" id="dev">
+    <button class="dev__toggle" id="devToggle" type="button" aria-label="Toggle prototype states">
+      <span class="dev__pips" aria-hidden="true"></span> prototype states
+    </button>
+    <div class="dev__bar" id="devBar">
+      <button data-state="ready" type="button">READY</button>
+      <button data-state="listening" type="button">LISTENING</button>
+      <button data-state="transcribing" type="button">TRANSCRIBING</button>
+      <button data-state="thinking" type="button">THINKING</button>
+      <button data-state="speaking" type="button">SPEAKING</button>
+      <button data-state="error" type="button">ERROR</button>
+      <button data-state="disconnected" type="button">DISCONNECTED</button>
+    </div>
+  </footer>
+
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>
