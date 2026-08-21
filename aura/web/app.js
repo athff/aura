@@ -605,7 +605,8 @@ document.body.classList.remove("live-open");
     liveBtn.hidden = false;
     stopLiveBtn.hidden = true;
     setLiveStatus("Ready");
-  }
+  document.body.classList.remove("live-open");
+}
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
