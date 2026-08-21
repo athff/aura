@@ -34,6 +34,11 @@
   let lastVoiceTime = 0;
   const VAD_THRESHOLD = 0.012;
   const VAD_SILENCE_MS = 700;
+  const VAD_THRESHOLD_STANDBY = 0.005;
+  let standbyMonitoringEnabled = false;
+  let standbyVADInterval = null;
+   let resumeTimeoutId = null;
+  let data = new Float32Array(2048);
 
   function isWsOpen() {
     return ws && ws.readyState === WebSocket.OPEN;
@@ -209,29 +214,60 @@
     }
     vadVoiceDetected = false;
     lastVoiceTime = 0;
-    if (analyserNode) {
-      try {
-        analyserNode.disconnect();
-      } catch (e) {
-        // ignore
-      }
-      analyserNode = null;
-    }
-    if (audioContext) {
-      try {
-        audioContext.close();
-      } catch (e) {
-        // ignore
-      }
-      audioContext = null;
-    }
+    // AudioContext/suspend cleanup is handled in disconnectLive(), not here
   }
 
+function startStandbyMonitoring() {
+    // If the standby monitor interval is already running, ensure the flag is set
+    // and return without creating a duplicate interval.
+    if (standbyMonitoringEnabled && standbyVADInterval) {
+      // Already active; nothing more to do.
+      return;
+    }
+    standbyMonitoringEnabled = true;
+    if (standbyVADInterval) clearInterval(standbyVADInterval);
+    standbyVADInterval = setInterval(() => {
+      if (!analyserNode) return;
+      try {
+        analyserNode.getFloatTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          sum += data[i] * data[i];
+        }
+        const rms = Math.sqrt(sum / data.length);
+        // Standby detection threshold (lower than normal VAD_THRESHOLD)
+        if (rms > VAD_THRESHOLD_STANDBY && liveMode && isWsOpen()) {
+          clearInterval(standbyVADInterval);
+          standbyVADInterval = null;
+          standbyMonitoringEnabled = false;
+          stopStandbyMonitoring();
+          startRecording();
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 1000);
+  }
+
+  function stopStandbyMonitoring() {
+    if (standbyVADInterval) {
+      clearInterval(standbyVADInterval);
+      standbyVADInterval = null;
+    }
+    standbyMonitoringEnabled = false;
+  }
   function stopRecording(sendForTranscription) {
     if (typeof sendForTranscription !== "boolean") {
       sendForTranscription = true;
     }
     shouldProcessRecording = sendForTranscription;
+    // When the VAD silence transition to standby is requested (sendForTranscription=true),
+    // mark standby monitoring as active BEFORE cleanupVAD() runs, so that cleanupVAD()
+    // preserves the AudioContext and analyserNode instead of destroying them.
+    if (sendForTranscription === true) {
+      standbyMonitoringEnabled = true;
+      startStandbyMonitoring();
+    }
     cleanupVAD();
 
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
@@ -243,7 +279,11 @@
     }
     if (mediaRecorder && mediaRecorder.stream) {
       try {
-        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+        // Only stop microphone tracks if not in standby monitoring mode.
+            // During standby, the stream remains alive so a lightweight monitor can detect wake events.
+            if (!standbyMonitoringEnabled) {
+              mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+            }
       } catch (e) {
         // ignore
       }
@@ -253,7 +293,11 @@
 
   function maybeResumeListening(delayMs) {
     const delay = typeof delayMs === "number" ? delayMs : 250;
-    setTimeout(() => {
+    if (resumeTimeoutId) {
+      clearTimeout(resumeTimeoutId);
+      resumeTimeoutId = null;
+    }
+    resumeTimeoutId = setTimeout(() => {
       if (!liveMode || !isWsOpen() || !micAutoResumeEnabled || micPermissionDenied) return;
       if (currentAudio || audioQueue.length) return;
       if (isRecordingActive()) return;
@@ -591,7 +635,20 @@ document.body.classList.remove("live-open");
   function disconnectLive() {
     micAutoResumeEnabled = false;
     stopRecording(false);
+    stopStandbyMonitoring();
     stopCurrentAudio();
+    if (resumeTimeoutId) {
+      clearTimeout(resumeTimeoutId);
+      resumeTimeoutId = null;
+    }
+    // Clean VAD interval and reset VAD state
+    cleanupVAD();
+    // Clean AudioContext/analyserNode (only in Live shutdown, not standby)
+    if (audioContext) {
+      audioContext.suspend();
+      audioContext = null;
+    }
+    analyserNode = null;
     if (ws) {
       try {
         ws.close();
