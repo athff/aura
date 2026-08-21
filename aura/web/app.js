@@ -125,6 +125,25 @@
     const normalized = state ? String(state).toLowerCase() : "ready";
     body.setAttribute("data-state", normalized);
     syncLive();
+    // Hide all state animation elements and show the appropriate one for the current state
+    const transcribingEl = document.getElementById("transcribing-process");
+    const speakingEl = document.getElementById("speaking-wave");
+    const thinkingEl = document.getElementById("thinking-process");
+    if (transcribingEl) transcribingEl.hidden = true;
+    if (speakingEl) speakingEl.hidden = true;
+    if (thinkingEl) thinkingEl.hidden = true;
+    if (normalized === "transcribing") {
+      if (transcribingEl) transcribingEl.hidden = false;
+    } else if (normalized === "speaking") {
+      if (speakingEl) speakingEl.hidden = false;
+    } else if (normalized === "thinking") {
+      if (thinkingEl) thinkingEl.hidden = false;
+    } else {
+      // "listening" and "ready" — keep animations hidden; status text suffices
+      if (transcribingEl) transcribingEl.hidden = true;
+      if (speakingEl) speakingEl.hidden = true;
+      if (thinkingEl) thinkingEl.hidden = true;
+    }
     // brief cross-fade when the voice state changes (180â€“250ms)
     const stage = document.querySelector(".live__stage");
     if (stage) {
@@ -535,6 +554,7 @@ document.body.classList.add("live-open");
         // Queue each sentence's audio and play them back-to-back so speech starts
         // before the whole reply is finished (streamed TTS).
         audioQueue.push({ b64: b64, fmt: fmt });
+        setLiveStatus("Speaking");
         playNextAudio();
       } else if (msg.type === "barge_in") {
         // User spoke while AURA was streaming Kokoro audio.
